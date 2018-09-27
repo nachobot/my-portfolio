@@ -1,6 +1,6 @@
 import boto3
 from botocore.client import Config
-import io  # Python3
+import io  # StringIO and BytesIO from Python2 
 import zipfile
 import mimetypes
 
@@ -23,8 +23,9 @@ build_bucket.download_fileobj('buildPortfolio.zip', portfolio_zip)
 
 # Extract, upload, set ACL
 with zipfile.ZipFile(portfolio_zip) as myZip:
-    for item in myZip.namelist():
-        obj = myZip.open(item)
-        portfolio_bucket.upload_fileobj(obj, item,
-         ExtraArgs={'ContentType': mimetypes.guess_type(item)[0]})
-        portfolio_bucket.Object(item).Acl().put(ACL='public-read')
+    for name in myZip.namelist():
+        obj = myZip.open(name)
+        print(mimetypes.guess_type(name)[0])
+        portfolio_bucket.upload_fileobj(obj, name,
+         ExtraArgs={'ContentType': mimetypes.guess_type(name)[0]})
+        portfolio_bucket.Object(name).Acl().put(ACL='public-read')
