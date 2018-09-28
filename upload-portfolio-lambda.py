@@ -1,8 +1,12 @@
+
 import boto3
 from botocore.client import Config
-import io  # StringIO and BytesIO from Python2 
+import io  # Python3
 import zipfile
 import mimetypes
+
+sns = boto3.resource('sns')
+topic = sns.Topic('arn:aws:sns:us-east-1:145295581730:deployPortfolioTopic')
 
 # Files stored in the Build Bucket are encrypted AWS KMS
 s3 = boto3.resource('s3', config=Config(signature_version='s3v4'))
@@ -23,9 +27,9 @@ build_bucket.download_fileobj('buildPortfolio.zip', portfolio_zip)
 
 # Extract, upload, set ACL
 with zipfile.ZipFile(portfolio_zip) as myZip:
-    for name in myZip.namelist():
-        obj = myZip.open(name)
-        print(mimetypes.guess_type(name)[0])
-        portfolio_bucket.upload_fileobj(obj, name,
-         ExtraArgs={'ContentType': mimetypes.guess_type(name)[0]})
-        portfolio_bucket.Object(name).Acl().put(ACL='public-read')
+    for item in myZip.namelist():
+        obj = myZip.open(item)
+        print(mimetypes.guess_type(item)[0])
+        portfolio_bucket.upload_fileobj(obj, item,
+         ExtraArgs={'ContentType': mimetypes.guess_type(item)[0]})
+        portfolio_bucket.Object(item).Acl().put(ACL='public-read')
