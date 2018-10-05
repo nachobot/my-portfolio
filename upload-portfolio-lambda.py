@@ -1,35 +1,66 @@
 
+import json
 import boto3
 from botocore.client import Config
-import io  # Python3
+import io  # StringIO and BytesIO from Python2
 import zipfile
 import mimetypes
 
-sns = boto3.resource('sns')
-topic = sns.Topic('arn:aws:sns:us-east-1:145295581730:deployPortfolioTopic')
+def lambda_handler(event, context):
 
-# Files stored in the Build Bucket are encrypted AWS KMS
-s3 = boto3.resource('s3', config=Config(signature_version='s3v4'))
+    # Used when we invoke lambda function manually
+    location = {
+        "bucketName": 'portfoliobuild.danielladsouza.com',
+        "objectKey": 'buildPortfolio.zip'
+    }
+    # https://docs.aws.amazon.com/codepipeline/latest/userguide/actions-invoke-lambda-function.html
+    try:
+        job = event.get("CodePipeline.job")
 
-# Source code bucket
-portfolio_bucket = s3.Bucket('portfolio.danielladsouza.com')
+        if job:
+            for artifact in job["data"]["inputArtifacts"]:
+                if artifact["name"] == "MyAppBuild":
+                    location = artifact["location"]["s3Location"]
 
-# Destination Build bucket
-build_bucket = s3.Bucket('portfoliobuild.danielladsouza.com')
+        print("Building portfolio from " + str(location))
 
-# Read the file directly into memory
-# IO in memory file - portfolio_zip
+        sns = boto3.resource('sns')
+        topic = sns.Topic('arn:aws:sns:us-east-1:145295581730:deployPortfolioTopic')
 
-portfolio_zip = io.BytesIO()
+        # Files stored in the Build Bucket are encrypted AWS KMS
+        s3 = boto3.resource('s3', config=Config(signature_version='s3v4'))
 
-# Download the zipped file to the object
-build_bucket.download_fileobj('buildPortfolio.zip', portfolio_zip)
+        # Source code bucket
+        portfolio_bucket = s3.Bucket('portfolio.danielladsouza.com')
 
-# Extract, upload, set ACL
-with zipfile.ZipFile(portfolio_zip) as myZip:
-    for item in myZip.namelist():
-        obj = myZip.open(item)
-        print(mimetypes.guess_type(item)[0])
-        portfolio_bucket.upload_fileobj(obj, item,
-         ExtraArgs={'ContentType': mimetypes.guess_type(item)[0]})
-        portfolio_bucket.Object(item).Acl().put(ACL='public-read')
+        # Destination Build bucket
+        build_bucket = s3.Bucket(location['bucketName'])
+
+
+        # Read the file directly into memory
+        # IO in memory file - portfolio_zip
+
+        portfolio_zip = io.BytesIO()
+
+        # Download the zipped file to the object
+        build_bucket.download_fileobj(location['objectKey'], portfolio_zip)
+
+        # Extract, upload, set ACL
+        with zipfile.ZipFile(portfolio_zip) as myZip:
+            for name in myZip.namelist():
+                obj = myZip.open(name)
+                print(mimetypes.guess_type(name)[0])
+                portfolio_bucket.upload_fileobj(obj, name,
+                 ExtraArgs={'ContentType': mimetypes.guess_type(name)[0]})
+                portfolio_bucket.Object(name).Acl().put(ACL='public-read')
+                
+        topic.publish(Subject="Deployment Status Update", Message="Portfolio deployed successfully")
+        if job:
+            codepipeline = boto3.client('codepipeline')
+            codepipeline.put_job_success_result(jobId=job["id"])
+        print("Job Done!")
+    except:
+        topic.publish(Subject="Deployment Failed", Message="Portfolio was not deployed successfully")
+        raise
+
+    return 'Hello from Lambda'
